@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Slot Booking System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h3 {
+            text-align: center;
+            color: #555;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        input, select, button {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="page1">
+        <h1>Meeting Slot Booking System</h1>
+        <form id="visitorForm">
+            <h3>Visitor Information</h3>
+            <input type="text" id="visitorName" placeholder="Your Name" required>
+            <input type="tel" id="visitorPhone" placeholder="Mobile Number" required>
+            <input type="text" id="visitorGovId" placeholder="Government ID" required>
+            <button type="button" onclick="submitVisitorForm()">Next</button>
+        </form>
+    </div>
+
+    <div class="container hidden" id="page2">
+        <h1>Patient Search</h1>
+        <form id="patientForm" onsubmit="submitPatientForm(); return false;">
+            <input type="text" id="patientId" placeholder="Patient ID" required>
+            <input type="text" id="patientName" placeholder="Patient Name" required>
+            <button type="submit">Submit Patient Info</button>
+            <div id="patientInfo" class="result hidden">
+                <p id="patientDetails"></p>
+            </div>
+            <button type="button" onclick="goToPage3()" class="hidden" id="toPage3Btn">Next</button>
+        </form>
+    </div>
+    
+
+    <div class="container hidden" id="page3">
+        <h1>Meeting Details</h1>
+        <form id="meetingForm">
+            <input type="number" id="numPersons" placeholder="Number of Persons (max 2)" max="2" required>
+            <input type="time" id="meetingTime" required>
+            <button type="button" onclick="generateQRCode()">Generate QR Code</button>
+        </form>
+
+        <div id="qrCode" class="result hidden">
+            <p>Scan this QR code at the hospital:</p>
+            <img id="qrImage" alt="QR Code">
+        </div>
+    </div>
+
+    <script>
+        let visitorId = null; // Will store the visitor ID after submitting the visitor form
+        let patientId = null; // Will store the patient ID after searching for the patient
+
+        function goToPage2() {
+            document.getElementById('page1').classList.add('hidden');
+            document.getElementById('page2').classList.remove('hidden');
+        }
+
+        function goToPage3() {
+            document.getElementById('page2').classList.add('hidden');
+            document.getElementById('page3').classList.remove('hidden');
+        }
+
+        // Submit visitor form and get the visitor ID
+        async function submitVisitorForm() {
+            const visitorName = document.getElementById('visitorName').value;
+            const visitorPhone = document.getElementById('visitorPhone').value;
+            const visitorGovId = document.getElementById('visitorGovId').value;
+
+            const response = await fetch('/api/visitors', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name: visitorName, phone: visitorPhone, gov_id: visitorGovId })
+            });
+
+            if (response.ok) {
+                // Get the response data, which includes the visitor ID
+                const data = await response.json();
+                visitorId = data.visitor_id; // Assuming the backend returns the visitor ID
+                goToPage2();
+            } else {
+                alert('Error adding visitor');
+            }
+        }
+
+        // Submit patient form and fetch patient details
+        async function submitPatientForm() {
+            const patientIdInput = document.getElementById('patientId').value;
+
+            if (!patientIdInput) {
+                alert('Please enter a valid Patient ID.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/patients/${patientIdInput}`, {
+                    method: 'GET'
+                });
+                
+                if (response.ok) {
+                    const patient = await response.json();
+                    patientId = patient.patient_id; // Store the patient ID
+                    document.getElementById('patientDetails').innerText = `Patient: ${patient.name}, Ward: ${patient.ward}`;
+                    document.getElementById('patientInfo').classList.remove('hidden');
+                    document.getElementById('toPage3Btn').classList.remove('hidden');
+                } else {
+                    alert('Patient not found.');
+                }
+            } catch (error) {
+                console.error('Error fetching patient:', error);
+                alert('Failed to fetch patient details.');
+            }
+        }
+
+        // Generate QR Code after meeting is scheduled
+        async function generateQRCode() {
+            const numPersons = document.getElementById('numPersons').value;
+            const meetingTime = document.getElementById('meetingTime').value;
+
+            if (!visitorId || !patientId || !numPersons || !meetingTime) {
+                alert('Please fill in all the required fields.');
+                return;
+            }
+
+            const meetingData = {
+                visitor_id: visitorId,
+                patient_id: patientId,
+                num_persons: numPersons,
+                meeting_time: meetingTime
+            };
+
+            try {
+                const response = await fetch('/api/meetings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(meetingData)
+                });
+
+                if (response.ok) {
+                    // Generate QR Code after successful meeting scheduling
+                    const bookingDetails = `Visitor ID: ${visitorId}, Patient ID: ${patientId}, Persons: ${numPersons}, Time: ${meetingTime}`;
+                    const qrImage = document.getElementById('qrImage');
+                    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bookingDetails)}`;
+                    document.getElementById('qrCode').classList.remove('hidden');
+                } else {
+                    alert('Error scheduling meeting');
+                }
+            } catch (error) {
+                console.error('Error scheduling meeting:', error);
+                alert('Failed to schedule meeting');
+            }
+        }
+    </script>
+</body>
+</html>
